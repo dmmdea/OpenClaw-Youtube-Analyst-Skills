@@ -44,6 +44,34 @@ cd ~/openclaw-mcp-servers/youtube-data
 
 `-m scripts.<name>` (not `./.venv/bin/python scripts/<name>.py`) is the correct invocation — scripts now import the sibling `scripts._danmar_ads_helper` module, and the `-m` form sets package context.
 
+## Quota & rate-limit discipline
+
+Two distinct limits are in play; conflate them at your peril.
+
+**1. YouTube Data API quota** — global per-project, 10k units/day. Track via `openclaw-quota` MCP (wired into every Data API tool). Always check before a bulk run:
+
+```
+./.venv/bin/python -c "from openclaw_shared.quota_budget import QuotaBudget; print(QuotaBudget('youtube_data').status())"
+```
+
+Costs: `channel_info` 1 unit, `channel_videos` ⌈N/50⌉, `videos_batch_stats` ⌈N/50⌉. A single library scan ≈ 50 units; 8 channels ≈ 400 units — well under daily cap.
+
+**2. YouTube caption-endpoint IP rate limit** — a per-IP throttle on `timedtext` (captions), unrelated to Data API quota. Symptoms when tripped:
+- `youtube-transcript-api` raises `IpBlocked`
+- `yt-dlp` returns `HTTP Error 429: Too Many Requests` even with `--impersonate chrome` (curl_cffi)
+
+Notes:
+- Single-video fetches during normal use are fine. ~10 back-to-back bulk pulls was enough to trip it on Dell 2026-04-21.
+- yt-dlp's info-JSON endpoints (metadata, search) are NOT affected — only `timedtext`/captions.
+- Reset window: 1–6 h, per-IP.
+
+Mitigations for any bulk transcript job (transcript-feature track, recency cross-checks, peer-cluster expansion):
+- Space requests ≥ 30 s apart
+- Route through a mobile hotspot or VPN for fast bulk passes
+- Wait it out (1–6 h) if you've already tripped it
+
+The `youtube` MCP (`~/openclaw-mcp-servers/youtube/`) uses the same two transports, so it surfaces the same error — there's no "use a different MCP" escape hatch.
+
 ## Workflow 1 — Scan a new channel
 
 ```
@@ -101,6 +129,8 @@ Outputs land in `~/openclaw-output/youtube-analyst/week-2/`:
 
 Trigger a rerun of `top5_with_ads.py` + Workflow 3 after new CSVs land — the organic outlier scores and per-video ROI change with fresh data.
 
+When Google Ads Basic access lands (email approval pending to dmmdea@hotmail.com), Workflow 4's CSV step is replaced by a live API path — see Track A in `~/openclaw-output/youtube-analyst/CONTINUATION_NON_HAILO.md` for the cutover procedure (smoke test, reconcile against CSV totals, swap `top5_with_ads.py` + `per_video_roi_generator.py` to live-query, keep CSV as cached fallback).
+
 ## Workflow 5 — Weekly OAuth re-auth (7-day Testing-mode expiry)
 
 Symptom that it's time: any `youtube-analytics` or `google-ads` tool returns `invalid_grant`.
@@ -140,6 +170,41 @@ If the historical weakness has already been fixed, drop it from the recommendati
 - **Just the Danmar top-5 with ads snapshot:** `./.venv/bin/python -m scripts.top5_with_ads`
 - **Revenue-weighted report (market CPM-weighted findings):** `./.venv/bin/python -m scripts.revenue_weighted_report`
 - **Resolve a batch of candidate handles → channel_ids:** `./.venv/bin/python -m scripts.resolve_candidates`
+
+## Workflow 9 — Hailo-accelerated features (when device present)
+
+Packaging analysis automatically picks up Hailo for richer thumbnail features (extra CLIP embeddings, OCR entity extraction) when `/dev/hailo0` exists. No manual switch — `openclaw_shared/features/thumbnail.py` calls `extract_thumbnail_features(path, backend=maybe_hailo_backend())`, which returns a Hailo backend if available and `None` otherwise. The OpenCV-only path remains the deterministic fallback; both paths emit the same dict schema, so downstream matched-pair stats don't care which produced the features.
+
+Verify Hailo health before a bulk run that's expected to use it:
+
+```
+ls /dev/hailo*                          # expect /dev/hailo0
+hailortcli fw-control identify          # expect Board=Hailo-8, Firmware 4.23.0
+```
+
+If either fails, packaging silently falls back to OpenCV — that's correct behaviour, but you'll want to know: `PACKAGING_FINDINGS.md` will show fewer feature columns than a Hailo-enabled run, and any `week-3-hailo/` deliverables will skip the Hailo-only columns.
+
+Hailo runtime, DKMS driver, HEF management, kernel-patch lifecycle, and the OCR-quality pipeline are out of scope for this skill. They live in a separate `hailo-stack` skill (TBD as of 2026-04-28). Do **not** reach into `~/openclaw-mcp-servers/hailo-vision/` or `/usr/src/hailo_pci-*/` from analyst scripts — go through `maybe_hailo_backend()`.
+
+## Operational discipline
+
+Invariants that hold across every run, every track, every report:
+
+- **Standalone-first.** Don't introduce cluster, DB, or external-service dependencies. If a track needs external data, fetch once and cache to `~/openclaw-output/youtube-analyst/cache/<source>/`. Every analysis must be reproducible on a single node.
+- **Checkpoint to disk.** Anything multi-hour writes intermediate state under `~/openclaw-output/youtube-analyst/<workflow>/` so an interruption (kernel update, OAuth expiry, network blip) doesn't lose work. Subsequent runs check markers (`phase_N_done.marker`) before redoing expensive steps.
+- **Quota first.** Call `openclaw-quota` before any YouTube/Brave op above single-call cost. If the budget is short, abort early — never half-run a bulk job and leave artifacts in inconsistent state.
+- **Quality mode is default.** Local optimizes for quality; overnight runs are expected. Don't pessimize accuracy to fit a 10-minute window.
+- **Don't regress W1/W2 deliverables.** Existing sheets and column names in `library.xlsx`, `title_analysis.xlsx`, `packaging_analysis.xlsx`, `competitor_title_analysis.xlsx`, `per_video_roi.xlsx` are reference points the user has built downstream Excel/Looker links against. **Add columns; never rename them.**
+- **Re-auth weekly while OAuth is in Testing.** See Workflow 5. The 7-day refresh-token expiry is a hard floor; schedule a reminder.
+
+## When to ask the user before acting
+
+- Adding peers whose market/role isn't obvious from their handle
+- Expanding the peer cluster beyond 20 channels (statistical noise vs cost trade-off)
+- Any change to sheet/column naming conventions
+- Cross-platform expansion (Meta, TikTok) — scope is weeks, not hours
+- Shipping any skill update to GitHub (Drive → verify → GitHub → memory pipeline)
+- When a re-run flips the sign of a previously validated finding — the data may be right, but verify before publishing
 
 ## Troubleshooting
 
