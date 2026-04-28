@@ -184,7 +184,7 @@ hailortcli fw-control identify          # expect Board=Hailo-8, Firmware 4.23.0
 
 If either fails, packaging silently falls back to OpenCV — that's correct behaviour, but you'll want to know: `PACKAGING_FINDINGS.md` will show fewer feature columns than a Hailo-enabled run, and any `week-3-hailo/` deliverables will skip the Hailo-only columns.
 
-Hailo runtime, DKMS driver, HEF management, kernel-patch lifecycle, and the OCR-quality pipeline are out of scope for this skill. They live in a separate `hailo-stack` skill (TBD as of 2026-04-28). Do **not** reach into `~/openclaw-mcp-servers/hailo-vision/` or `/usr/src/hailo_pci-*/` from analyst scripts — go through `maybe_hailo_backend()`.
+Hailo runtime, DKMS driver, HEF management, kernel-patch lifecycle, content-addressed Vision Cache, and the OCR-quality pipeline are out of scope for this skill. They live in the sibling [`Hailo-Stack-Skill`](../Hailo-Stack-Skill/SKILL.md). Do **not** reach into `~/openclaw-mcp-servers/hailo-vision/` or `/usr/src/hailo_pci-*/` from analyst scripts — go through `maybe_hailo_backend()` (and optionally pass a `cache=VisionCache(...)` for the 1000× speedup on repeat scans).
 
 ## Operational discipline
 
