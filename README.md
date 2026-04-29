@@ -1,14 +1,13 @@
 # OpenClaw YouTube Analyst — Claude Code skills
 
-Three complementary Claude Code skills that power a YouTube channel analysis pipeline:
+Two complementary Claude Code skills that power a YouTube channel analysis pipeline:
 
 | Skill | Purpose | When to invoke |
 |---|---|---|
 | [`Youtube-Analyzer-Setup-Skill`](./Youtube-Analyzer-Setup-Skill/SKILL.md) | One-time bootstrap: Google Cloud project + OAuth client + YouTube Data API key + Google Ads Manager wrapper + developer token + secrets.env layout + 6 MCP registrations + smoke test. | "set up youtube analyst", "bootstrap youtube analytics pipeline", "connect my youtube channel", standing up a second node. |
 | [`Youtube-Analyst-Runbook`](./Youtube-Analyst-Runbook/SKILL.md) | Day-to-day operation: scan new channels, rerun packaging + matched-pair analyses, join ad spend for organic-vs-paid split, apply the statistical-discipline contract, weekly maintenance (OAuth re-auth, ads CSV refresh, quota check). | "scan this channel", "rerun packaging analysis", "matched pair analysis", "refresh analyst data", "how should I read these findings". |
-| [`Hailo-Stack-Skill`](./Hailo-Stack-Skill/SKILL.md) | Operational runbook for the Hailo-8L NPU lane underneath the analyst pipeline: driver lifecycle (DKMS + kernel ≥ 6.12 VDMA patch), HEF management, HailoRT venv, the `hailo-vision` MCP, content-addressed Vision Cache (1060× speedup on repeat scans), OCR mode semantics. | "verify hailo", "rebuild hailo driver", "swap a hef", "warm the vision cache", "fix hailo after kernel upgrade", "explain hailo ocr modes". |
 
-The setup skill hands off to the runbook skill once bootstrap is complete; the runbook delegates everything below `maybe_hailo_backend()` to the Hailo-Stack skill. They're shipped as one repo because they share triggers, paths, memory references, and the same underlying pipeline.
+The setup skill hands off to the runbook skill once bootstrap is complete. They're shipped as one repo because they share triggers, paths, memory references, and the same underlying pipeline.
 
 ## What the pipeline does
 
@@ -31,7 +30,6 @@ Each skill is a standard Claude Code skill: a single `SKILL.md` under `~/.claude
 mkdir -p ~/.claude/skills/
 cp -r Youtube-Analyzer-Setup-Skill ~/.claude/skills/
 cp -r Youtube-Analyst-Runbook     ~/.claude/skills/
-cp -r Hailo-Stack-Skill           ~/.claude/skills/   # only on nodes with Hailo-8L installed
 ```
 
 Restart your Claude Code session. Invoke by saying any of the trigger phrases in the tables above.
