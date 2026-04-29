@@ -5,6 +5,9 @@ description: Bootstraps the full OpenClaw YouTube analyst pipeline on a fresh ma
 
 # YouTube Analyzer Setup
 
+**Version:** v2 — 2026-04-28
+**Scope:** YouTube analyst pipeline only (6 MCPs + OAuth + Google Ads wrapper + secrets layout). Optional NPU acceleration (Hailo-8L) lives in the sibling repo [`dmmdea/hailo-youtube-stack-mcp`](https://github.com/dmmdea/hailo-youtube-stack-mcp) — bootstrap that separately if/when you want it.
+
 One-time bootstrap flow to stand up the full OpenClaw YouTube analyst pipeline. Captures all real friction encountered during the Dell installation 2026-04-21 so a fresh machine can reach end-to-end analysis without bespoke walkthroughs.
 
 ## When to use
@@ -18,6 +21,8 @@ Trigger on any of:
 ## What you get after running through
 
 6 registered MCPs: `brave-search`, `youtube` (yt-dlp), `openclaw-quota`, `youtube-data` (Data API v3), `youtube-analytics` (Analytics API + Reporting API), `google-ads`. All 6 connected in `claude mcp list`. OAuth flow complete with 4 scopes. Ad-spend data accessible either via API (once Basic access lands) or via CSV ingest (immediately).
+
+**Optional 7th MCP — `hailo-vision`:** for NPU-accelerated thumbnail features on Hailo-8L hardware. Owned by the sibling repo [`dmmdea/hailo-youtube-stack-mcp`](https://github.com/dmmdea/hailo-youtube-stack-mcp). Not part of this skill — bootstrap separately via that repo's `Hailo-Stack-Skill` if you have the hardware. The YouTube analyst auto-detects it at runtime per Runbook Workflow 9; no impact on the YouTube pipeline if absent.
 
 ## Prerequisites
 
@@ -169,6 +174,17 @@ All four checks should succeed before declaring setup complete:
    ```
    Writes `library.xlsx` under `/home/dmmdea/openclaw-output/youtube-analyst/week-1/<channel>/`.
 
+### Reference: Dell verification (2026-04-28)
+
+End-to-end install verified live on Dell OptiPlex 7060 (`workernode`, 10.0.0.79). All 4 smoke tests passed against `@DanmarAutoReviews`:
+
+- `my_channel()` returned the brand-account-owned channel (correct selection at OAuth picker).
+- `ads_list_accessible_customers()` returned manager `143-213-9099` (DanmarMediaProductions) + sub-account `212-310-0176`.
+- `youtube_channel_info("@DanmarAutoReviews")` returned channel details with 1 unit debited.
+- `library_scan.py @DanmarAutoReviews` produced `library.xlsx` under `~/openclaw-output/youtube-analyst/week-1/<slug>/`.
+
+Use this record as a baseline when running setup on a fresh node — same outputs, different channel handle.
+
 ## Troubleshooting cheat sheet
 
 | Symptom | Cause | Fix |
@@ -195,4 +211,11 @@ All four checks should succeed before declaring setup complete:
 - `reference_openclaw_youtube_data_mcp.md` — Data API MCP
 - `reference_openclaw_quota_mcp.md` — shared quota tracker
 - `reference_openclaw_packaging_analysis.md` — feature extractors consumed by downstream analysis
+- `reference_youtube_analyst_skills.md` — Drive + GitHub locations for the skill pair
+- `feedback_skill_shipping_protocol.md` — Drive-first → GitHub → memory ship cycle (mandatory)
 - `feedback_cross_reference_ads_before_citing_outliers.md` — analytical discipline for all outputs
+
+## Sibling skills
+
+- **`Youtube-Analyst-Runbook`** (this same repo, [`dmmdea/OpenClaw-Youtube-Analyst-Skills`](https://github.com/dmmdea/OpenClaw-Youtube-Analyst-Skills)) — day-to-day operations after bootstrap completes. Library scans, packaging analysis, matched-pair tests, weekly maintenance, findings interpretation.
+- **`Hailo-Stack-Skill`** (sibling repo [`dmmdea/hailo-youtube-stack-mcp`](https://github.com/dmmdea/hailo-youtube-stack-mcp)) — optional NPU acceleration. Separate runbook for the Hailo-8L device, `hailo-vision` MCP, DKMS kernel patch, `openclaw_shared.cache.VisionCache` (1060× speedup on repeat scans), HEFs, OCR mode semantics. Bootstrap only if you have the hardware; the YouTube analyst pipeline auto-detects and uses it via `maybe_hailo_backend()`.
