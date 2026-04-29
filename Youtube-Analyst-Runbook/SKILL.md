@@ -1,11 +1,13 @@
 ---
 name: Youtube-Analyst-Runbook
-description: Day-to-day operational runbook for the OpenClaw YouTube analyst pipeline — scanning new channels, running packaging + matched-pair analyses, joining ad spend for organic-vs-paid split, interpreting findings with the statistical-discipline contract, and weekly maintenance (OAuth re-auth, ads CSV refresh, quota check). Use when the user says "scan this channel", "analyze this youtube channel", "rerun packaging analysis", "matched pair analysis", "add peer channel", "run library scan", "refresh youtube analyst data", "ingest ads csv", "redo competitor analysis", "how should I read these findings", or anything else about EXECUTING analysis after the pipeline is set up (separate skill `Youtube-Analyzer-Setup-Skill` handles first-time bootstrap).
+description: Day-to-day operational runbook for the OpenClaw YouTube analyst pipeline — scanning new channels, running packaging + matched-pair analyses, joining ad spend for organic-vs-paid split, interpreting findings with the statistical-discipline contract, writing findings reports, weekly drift re-scans, transcript/hook feature builds, peer-cluster expansion, regression-loop checks, OpenClaw conductor wiring, and weekly maintenance (OAuth re-auth, ads CSV refresh, quota check). Use when the user says "scan this channel", "analyze this youtube channel", "rerun packaging analysis", "matched pair analysis", "add peer channel", "run library scan", "refresh youtube analyst data", "ingest ads csv", "redo competitor analysis", "how should I read these findings", "write findings report", "weekly rescan", "drift report", "build transcript features", "hook analysis", "expand peer cluster", "add new peers", "collab detection", "filter collabs", "regression check", "invariant audit", "wire analyst to telegram", "expose analyst to conductor", or anything else about EXECUTING analysis after the pipeline is set up (separate skill `Youtube-Analyzer-Setup-Skill` handles first-time bootstrap).
 ---
 
 # YouTube Analyst Runbook
 
-Operational playbook for the live pipeline. Assumes the setup skill has already run (6 MCPs connected, OAuth tokens on disk, secrets.env populated, Ads Manager wired up). Covers discovery → library scan → packaging analysis → matched-pair tests → honest interpretation → maintenance.
+**Version:** v3 — 2026-04-28
+
+Operational playbook for the live pipeline. Assumes the setup skill has already run (6 MCPs connected, OAuth tokens on disk, secrets.env populated, Ads Manager wired up). Covers discovery → library scan → packaging analysis → matched-pair tests → findings reports → honest interpretation → maintenance → forward-track routing.
 
 ## When to use
 
@@ -186,6 +188,34 @@ If either fails, packaging silently falls back to OpenCV — that's correct beha
 
 Hailo runtime, DKMS driver, HEF management, kernel-patch lifecycle, content-addressed Vision Cache, and the OCR-quality pipeline are out of scope for this skill. They live in the sibling repo [`dmmdea/hailo-youtube-stack-mcp`](https://github.com/dmmdea/hailo-youtube-stack-mcp) (Hailo-Stack-Skill, `hailo-vision` MCP, `openclaw_shared.cache.VisionCache`, DKMS patch). Do **not** reach into `~/openclaw-mcp-servers/hailo-vision/` or `/usr/src/hailo_pci-*/` from analyst scripts — go through `maybe_hailo_backend()` (and optionally pass a `cache=VisionCache(...)` for the 1060× speedup on repeat scans).
 
+## Workflow 10 — Writing a findings report
+
+Each analysis emits a structured `FINDINGS.md` (or `PACKAGING_FINDINGS.md` / `COMPETITOR_FINDINGS.md`) alongside its xlsx workbook. Format must satisfy the statistical-discipline contract from Workflow 6 plus the playbook spec § 7. Don't free-form: deviating breaks the user's downstream Excel/Looker links and erodes trust in the cohort labels.
+
+### Required sections (in order)
+
+1. **Title + run metadata.** Deliverable name · channel(s) analysed · date range · cohort sizes · script path that generated it.
+2. **Confidence summary at top.** A short block stating: (a) % of claims that carry effect-size + CI, (b) minimum cohort size `n_min`, (c) algorithm-snapshot date with the playbook §7 drift disclaimer ("Generated 2026-Qx; YouTube algorithm changes quarterly; re-validate before applying to next quarter"). The drift disclaimer goes at the top, not buried in a footer — readers must see it before any finding.
+3. **Headline finding.** ONE sentence with effect direction + size + CI + sample size. Example: *"In the recent-30-vs-Danmar-back-catalogue cohort (n_top=8, n_bottom=34), titles with year-mention `2026` carry a +0.62 d advantage on `organic_outlier_score` (95% CI 0.18–1.06, **HYPOTHESIS ONLY n<30 in top cohort**)."*
+4. **Findings table.** One row per claim. Columns: feature · cohort A vs cohort B · n_A · n_B · Cohen's d · 95% CI · effect-size verbal label (negligible / small / medium / large per Workflow 6 §2) · `HYPOTHESIS ONLY` flag if either n<30 · short prose explaining the direction.
+5. **Asymmetric-framing block** when comparing Danmar to peers: state explicitly that Danmar uses `organic_outlier_score` + collab-drop while peers use raw `outlier_score`. Reference `feedback_cross_reference_ads_before_citing_outliers.md`.
+6. **Caveats list.** Specific samples-too-small calls, anomalous channels excluded, ads-spend-promoted videos filtered, content-trajectory drift since the snapshot, etc.
+7. **Recommendations** (only if the data supports them) — each with effect size + CI + a backtestable hypothesis. A/B-able via YouTube Test & Compare wherever possible.
+
+### Mandatory rules
+
+- **No "score X out of 100".** Emit feature vectors, not scores. Uncalibrated scoring is astrology — see playbook § 0.
+- **No "do X to go viral".** Recommendations are testable, not prescriptive.
+- **`HYPOTHESIS ONLY` cannot be promoted in the same report.** If a finding is HYPOTHESIS in the headline, it must remain HYPOTHESIS in the recommendations.
+- **Every numeric claim cites its sample size.** No "trends suggest" prose without `n`.
+- **Cross-reference ads on Danmar specifics.** Any specific Danmar video called out as "working well" must report `ad_views_claimed` + `ad_spend_usd` alongside `outlier_score` (per `feedback_cross_reference_ads_before_citing_outliers.md`).
+- **Don't rename existing column headers** in the xlsx workbook (per Operational discipline). Recommendations live in markdown; the workbook is reference data only — additive columns OK, renames break the user's downstream links.
+- **Recency cross-check before publishing** — Workflow 7 — verify the claimed weakness/strength is still in recent content before citing it.
+
+### Skeleton
+
+Use the most-recent `FINDINGS.md` from `~/openclaw-output/youtube-analyst/week-2/` as the canonical template. The structure has stabilized over weeks 1–2 and downstream tools (Looker, the user's eyeballs) expect it. Match section order, table columns, and the `HYPOTHESIS ONLY` placement exactly.
+
 ## Operational discipline
 
 Invariants that hold across every run, every track, every report:
@@ -206,6 +236,21 @@ Invariants that hold across every run, every track, every report:
 - Shipping any skill update to GitHub (Drive → verify → GitHub → memory pipeline)
 - When a re-run flips the sign of a previously validated finding — the data may be right, but verify before publishing
 
+## Active tracks
+
+Forward-roadmap of follow-on work. Each track is self-contained — none strictly blocks another. Priority and effort live in `~/openclaw-output/youtube-analyst/SKILL_PLAN.md`; per-track invariants in `~/openclaw-output/youtube-analyst/CONTINUATION_NON_HAILO.md`.
+
+- **Track A — Google Ads Basic-access live migration.** Replace CSV ingest with live API. Blocked on Google approval email to dmmdea@hotmail.com. Cutover steps in CONTINUATION § Track A; pointer also in Workflow 4.
+- **Track B — Collab video detection.** `is_collab` flag + filter in matched-pair (different experiment type from organic packaging). New module `openclaw_shared/features/video_type.py`. ~1 day.
+- **Track C — Transcript / hook / topic analysis (= playbook Week 3).** Topic tags + hook category + sentiment + words-per-minute from existing transcripts at `~/openclaw-output/transcripts/`. New module `openclaw_shared/features/transcript.py`. **Rate-limit aware** per the Quota & rate-limit discipline section above — bulk transcript pulls trip the per-IP caption-endpoint throttle.
+- **Track D — Weekly re-scan automation.** `weekly_rescan.py` + diff vs last week + telegram notification. Sunday 04:00 systemd timer. ~1 day.
+- **Track E — Peer cluster expansion 7 → 15-20.** Stronger matched-pair stats. Candidate handles in `project_user_channel_danmar_auto_reviews.md`. **Ask user** before adding peers whose market/role isn't obvious.
+- **Track F — Skill feedback-upgrade loop.** Adversarial regression check on W1/W2 invariants weekly (Cohen's d sign-stability, SAMPLE_FLOOR, Danmar-vs-peer asymmetry, Venezuela audience share floor).
+- **Track H — OpenClaw integration surfacing.** Wire analyst sub-agents to Sonnet conductor via `~/.claude/scripts/openclaw-subagents-mcp.js` so Telegram can trigger scans/analyses.
+- **Track G — Cross-platform (Meta / TikTok / X / LinkedIn).** Deferred per playbook §9 + §12. Phase BA-8 using shared infra. **Ask user first** — scope is weeks per platform.
+
+Trigger-phrase routing: *"weekly rescan"* / *"drift report"* → D · *"expand peer cluster"* / *"add new peers"* → E · *"build transcript features"* / *"hook analysis"* → C · *"collab detection"* / *"filter collabs"* → B · *"regression check"* / *"invariant audit"* → F · *"wire to telegram"* / *"expose to conductor"* → H.
+
 ## Troubleshooting
 
 | Symptom | Cause | Fix |
@@ -220,13 +265,32 @@ Invariants that hold across every run, every track, every report:
 
 ## Related memory files (read these before publishing any finding)
 
+**Doctrine** — HOW to operate:
+- `feedback_quality_over_time_local_ecosystem.md` — quality-mode default, overnight runs expected
+- `feedback_standalone_first_design.md` — every capability must run on a single host
 - `feedback_cross_reference_ads_before_citing_outliers.md` — the #1 analytical rule
-- `project_user_channel_danmar_auto_reviews.md` — revenue + audience facts, biggest known packaging gaps
-- `reference_openclaw_packaging_analysis.md` — feature extractors + matched-pair stats module
-- `reference_openclaw_youtube_data_mcp.md` — Data API MCP tools + quota costs
+- `feedback_learn_and_evolve.md` — extract invariants when porting; re-validate, don't blind-replicate
+- `feedback_skill_shipping_protocol.md` — Drive → verify → GitHub → memory ship cycle (mandatory)
+
+**Skill cross-reference:**
+- `reference_youtube_analyst_skills.md` — the 2-skill layout (Setup + Runbook), Drive + GitHub locations
+
+**MCP references:**
+- `reference_openclaw_quota_mcp.md` — shared quota tracker (MUST respect)
+- `reference_openclaw_youtube_data_mcp.md` — Data API tools + quota costs
 - `reference_openclaw_youtube_analytics_mcp.md` — owner-side Analytics MCP + OAuth lifecycle
 - `reference_openclaw_google_ads_mcp.md` — ad-spend MCP + CSV ingest fallback
-- `reference_openclaw_quota_mcp.md` — shared quota tracker
+- `reference_openclaw_packaging_analysis.md` — feature extractors + matched-pair stats module
+- `reference_brave_search_mcp.md` — web discovery endpoints + costs
+- `reference_youtube_mcp.md` — yt-dlp transcripts + metadata
+
+**Project context:**
+- `project_user_channel_danmar_auto_reviews.md` — the subject channel (WHY of everything); revenue + audience facts; biggest known packaging gaps
+- `project_openclaw_install.md` — infrastructure state
+
+**Active plan (this skill's roadmap):**
+- `~/openclaw-output/youtube-analyst/SKILL_PLAN.md` — maintenance backlog (M1-M8) + feature roadmap (F1-F10)
+- `~/openclaw-output/youtube-analyst/CONTINUATION_NON_HAILO.md` — the 8 tracks A-H with implementation notes
 
 ## Sibling skill
 
