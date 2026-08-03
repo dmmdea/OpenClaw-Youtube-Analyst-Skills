@@ -1,5 +1,7 @@
 # OpenClaw YouTube Analyst — Claude Code skills
 
+![License: MIT](https://img.shields.io/badge/License-MIT-green.svg) ![Claude Code Skills](https://img.shields.io/badge/Claude_Code-2_Skills-8A2BE2) ![YouTube Data API](https://img.shields.io/badge/YouTube-Data_API_v3-FF0000) ![Google Cloud](https://img.shields.io/badge/Google_Cloud-OAuth_bootstrap-4285F4)
+
 Two complementary Claude Code skills that power a YouTube channel analysis pipeline:
 
 | Skill | Version | Purpose | When to invoke |
